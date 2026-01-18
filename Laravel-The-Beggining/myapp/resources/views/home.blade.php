@@ -27,12 +27,29 @@
     @csrf
     <label>
         Имя:<br>
-        <input type="text" name="name" value="{{ old('name') }}">
+        <input type="text" name="name" value="{{ old('name') }}" required>
+    </label>
+    <br><br>
+    <label>
+        Категория:<br>
+        <select name="category_id">
+            <option value="">Выберите категорию</option>
+            @foreach($categories as $category)
+                <option value="{{ $category->id }}" {{ old('category_id') == $category->id ? 'selected' : '' }}>
+                    {{ $category->name }}
+                </option>
+            @endforeach
+        </select>
     </label>
     <br><br>
     <label>
         Сообщение:<br>
-        <textarea name="message">{{ old('message') }}</textarea>
+        <textarea name="message" rows="5" required>{{ old('message') }}</textarea>
+    </label>
+    <br><br>
+    <label>
+        Рейтинг (0-5):<br>
+        <input type="number" name="rating" min="0" max="5" value="{{ old('rating', 0) }}">
     </label>
     <br><br>
     <button type="submit">Отправить</button>

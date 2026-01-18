@@ -2,18 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Feedback;
+use App\Models\User;
+use App\Models\Category;
 use Illuminate\Http\Request;
 
 class PageController extends Controller
 {
     public function home()
     {
-        return view('home');  // подключаем home.blade.php
+        $categories = Category::all();
+        return view('home', compact('categories'));
     }
 
     public function about()
     {
-        return view('about'); // подключаем about.blade.php
+        return view('about');
     }
 
     public function submitFeedback(Request $request)
@@ -22,45 +26,47 @@ class PageController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:50',
             'message' => 'required|string|max:500',
+            'category_id' => 'nullable|exists:categories,id',
+            'rating' => 'nullable|integer|min:0|max:5',
         ]);
 
-        // 2️⃣ Сохраняем в JSON-файл с уникальным именем
-        $data = [
-            'name' => $validated['name'],
-            'message' => $validated['message'],
-            'created_at' => now()->toDateTimeString(),
-        ];
+        // 2️⃣ Получаем или создаем пользователя
+        $user = User::firstOrCreate(
+            ['email' => strtolower(str_replace(' ', '_', $validated['name'])) . '@feedback.local'],
+            [
+                'name' => $validated['name'],
+                'password' => bcrypt('password')
+            ]
+        );
 
-        $filename = 'feedback_' . time() . '_' . uniqid() . '.json';
-        $path = storage_path('app/feedback'); // папка storage/app/feedback
+        // 3️⃣ Получаем категорию (по умолчанию первую)
+        $categoryId = $validated['category_id'] ?? Category::first()?->id;
 
-        // создаём папку, если не существует
-        if (!file_exists($path)) {
-            mkdir($path, 0755, true);
+        if (!$categoryId) {
+            return redirect()->back()->withErrors(['category_id' => 'Необходимо выбрать категорию. Сначала создайте категории через API или сидеры.']);
         }
 
-        file_put_contents($path . '/' . $filename, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        // 4️⃣ Создаем отзыв в базе данных
+        $feedback = Feedback::create([
+            'user_id' => $user->id,
+            'category_id' => $categoryId,
+            'title' => 'Отзыв от ' . $validated['name'],
+            'message' => $validated['message'],
+            'rating' => $validated['rating'] ?? 0,
+            'is_published' => false, // По умолчанию не опубликован
+        ]);
 
-        // 3️⃣ Перенаправляем с сообщением
-        return redirect()->back()->with('success', 'Данные успешно отправлены!');
+        // 5️⃣ Перенаправляем с сообщением
+        return redirect()->back()->with('success', 'Отзыв успешно отправлен!');
     }
     
-        public function showFeedbacks()
+    public function showFeedbacks()
     {
-        $path = storage_path('app/feedback');
+        $feedbacks = Feedback::with(['user', 'category', 'tags'])
+            ->published()
+            ->recent()
+            ->get();
 
-        $feedbacks = [];
-
-        if (file_exists($path)) {
-            $files = scandir($path); // получаем все файлы в папке
-            foreach ($files as $file) {
-                if (in_array(pathinfo($file, PATHINFO_EXTENSION), ['json'])) {
-                    $content = file_get_contents($path . '/' . $file);
-                    $feedbacks[] = json_decode($content, true);
-                }
-            }
-        }
-
-        return view('feedbacks', ['feedbacks' => $feedbacks]);
+        return view('feedbacks', compact('feedbacks'));
     }
 }
